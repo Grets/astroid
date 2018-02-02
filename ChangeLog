@@ -2,6 +2,52 @@ Change log for the astroid package (used to be astng)
 =====================================================
 
 --
+   * Added brain tips for random.sample
+
+     Part of PyCQA/pylint#811
+
+   * Fix submodule imports from six
+
+   Close PYCQA/pylint#1640
+
+   * Fix missing __module__ and __qualname__ from class definition locals
+
+	Close PYCQA/pylint#1753
+
+   * Fix a crash when __annotations__ access a parent's __init__ that does not have arguments
+
+     Close #473
+
+   * Fix multiple objects sharing the same InferenceContext.path causing
+   uninferable results
+
+     Close #483
+
+   * Fix improper modification of col_offset, lineno upon inference of builtin
+   functions
+
+     Close PyCQA/pylint#1839
+
+2017-12-15 -- 1.6.0
+
+   * When verifying duplicates classes in MRO, ignore on-the-fly generated classes
+
+     Close PyCQA/pylint#1706
+
+   * Add brain tip for attrs library to prevent unsupported-assignment-operation false positives
+
+	 Close PYCQA/pylint#1698
+
+   * file_stream was removed, since it was deprecated for three releases
+
+     Instead one should use the .stream() method.
+
+   * Vast improvements to numpy support
+
+   * Add brain tips for curses
+
+     Close PyCQA/pylint#1703
+
    * Add brain tips for UUID.int
 
      Close PyCQA/pylint#961

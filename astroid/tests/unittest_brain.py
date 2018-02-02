@@ -40,16 +40,17 @@ except ImportError:
     HAS_DATEUTIL = False
 
 try:
-    import numpy # pylint: disable=unused-import
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-
-try:
     import pytest
     HAS_PYTEST = True
 except ImportError:
     HAS_PYTEST = False
+
+try:
+    import attr as attr_module # pylint: disable=unused-import
+    HAS_ATTR = True
+except ImportError:
+    HAS_ATTR = False
+
 import six
 
 from astroid import MANAGER
@@ -372,6 +373,20 @@ class SixBrainTest(unittest.TestCase):
             qname = 'httplib.HTTPSConnection'
         self.assertEqual(inferred.qname(), qname)
 
+    @unittest.skipIf(six.PY2,
+                     "The python 2 six brain uses dummy classes")
+    def test_from_submodule_imports(self):
+        """Make sure ulrlib submodules can be imported from
+
+        See PyCQA/pylint#1640 for relevant issue
+        """
+        ast_node = builder.extract_node('''
+        from six.moves.urllib.parse import urlparse
+        urlparse #@
+        ''')
+        inferred = next(ast_node.infer())
+        self.assertIsInstance(inferred, nodes.FunctionDef)
+
 
 @unittest.skipUnless(HAS_MULTIPROCESSING,
                      'multiprocesing is required for this test, but '
@@ -625,18 +640,6 @@ class DateutilBrainTest(unittest.TestCase):
         self.assertEqual(d_type.qname(), "datetime.datetime")
 
 
-@unittest.skipUnless(HAS_NUMPY, "This test requires the numpy library.")
-class NumpyBrainTest(unittest.TestCase):
-
-    def test_numpy(self):
-        node = builder.extract_node('''
-        import numpy
-        numpy.ones #@
-        ''')
-        inferred = next(node.infer())
-        self.assertIsInstance(inferred, nodes.FunctionDef)
-
-
 @unittest.skipUnless(HAS_PYTEST, "This test requires the pytest library.")
 class PytestBrainTest(unittest.TestCase):
 
@@ -815,6 +818,94 @@ class BrainUUIDTest(unittest.TestCase):
         ''')
         inferred = next(node.infer())
         self.assertIsInstance(inferred, nodes.Const)
+
+
+@unittest.skipUnless(HAS_ATTR, "These tests require the attr library")
+class AttrsTest(unittest.TestCase):
+    def test_attr_transform(self):
+        module = astroid.parse("""
+        import attr
+
+        @attr.s
+        class Foo:
+
+            d = attr.ib(attr.Factory(dict))
+
+        f = Foo()
+        f.d['answer'] = 42
+
+        @attr.s(slots=True)
+        class Bar:
+            d = attr.ib(attr.Factory(dict))
+
+        g = Bar()
+        g.d['answer'] = 42
+        """)
+
+        for name in ('f', 'g'):
+            should_be_unknown = next(module.getattr(name)[0].infer()).getattr('d')[0]
+            self.assertIsInstance(should_be_unknown, astroid.Unknown)
+
+
+class RandomSampleTest(unittest.TestCase):
+
+    def test_different_arguments(self):
+        too_many_args_node = astroid.extract_node('''
+        import random
+        random.sample([1, 2], 2, 3) #@
+        ''')
+        inferred = next(too_many_args_node.infer())
+        self.assertIsInstance(inferred, astroid.List)
+        self.assertEqual(inferred.as_string(), '[None, None]')
+
+        too_few_args_nodes = astroid.extract_node('''
+        import random
+        random.sample([1, 2]) #@
+        random.sample() #@
+        ''')
+        for node in too_few_args_nodes:
+            self.assertIs(next(node.infer()), astroid.Uninferable)
+
+    def test_length_is_not_int(self):
+        invalid_length_first, invalid_length_second = astroid.extract_node('''
+        import random
+        random.sample([1], 'a') #@
+        random.sample([1], []) #@
+        ''')
+        for node in invalid_length_first, invalid_length_second:
+            inferred = next(node.infer())
+            self.assertIs(inferred, astroid.Uninferable)
+
+    def test_not_acceptable_sequences(self):
+        invalid_nodes = astroid.extract_node('''
+        import random
+        random.sample({1: 2}, 1) #@
+        random.sample((i for i in range(10)), 1) #@
+        random.sample(42, 1) #@
+        ''')
+        for node in invalid_nodes:
+            inferred = next(node.infer())
+            self.assertIsInstance(inferred, astroid.List)
+            self.assertEqual(inferred.as_string(), '[None]')
+
+    def test_length_is_too_big(self):
+        node = astroid.extract_node('''
+        import random
+        random.sample([1, 2, 3], 4) #@
+        ''')
+        inferred = next(node.infer())
+        self.assertIsInstance(inferred, astroid.List)
+        self.assertEqual(inferred.as_string(), '[None, None, None, None]')
+
+    def test_inferred_successfully(self):
+        node = astroid.extract_node('''
+        import random
+        random.sample([1, 2], 2) #@
+        ''')
+        inferred = next(node.infer())
+        self.assertIsInstance(inferred, astroid.List)
+        elems = sorted(elem.value for elem in inferred.elts)
+        self.assertEqual(elems, [1, 2])
 
 
 if __name__ == '__main__':
